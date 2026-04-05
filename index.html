@@ -1,0 +1,1274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
+<title>Coin Book → Sheet Data Extractor (Claude Vision) v2.9</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+</script>
+<style>
+  :root {
+    --bg: #0f172a;
+    --panel: #1e293b;
+    --panel2: #273449;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #f59e0b;
+    --accent2: #fbbf24;
+    --success: #10b981;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  header {
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  header h1 {
+    margin: 0 0 6px 0;
+    color: var(--accent2);
+    font-size: 28px;
+  }
+  header p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 18px;
+  }
+  .panel h2 {
+    margin: 0 0 14px 0;
+    font-size: 16px;
+    color: var(--accent2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .step-num {
+    background: var(--accent);
+    color: #111;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input[type="text"], input[type="password"], textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+  }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 200px; }
+
+  button {
+    background: var(--accent);
+    color: #111;
+    border: none;
+    padding: 11px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  button:hover { background: var(--accent2); transform: translateY(-1px); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  button.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+  button.success { background: var(--success); color: #fff; }
+  button.danger { background: var(--danger); color: #fff; }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--panel2);
+  }
+  .drop-zone:hover, .drop-zone.dragover {
+    border-color: var(--accent);
+    background: rgba(245, 158, 11, 0.05);
+  }
+  .drop-zone p { margin: 4px 0; color: var(--muted); }
+  .drop-zone .big { font-size: 40px; }
+
+  .thumbs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+  }
+  .thumb {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .thumb .remove {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: var(--danger);
+    color: white;
+    border: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    padding: 0;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .thumb .status {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 4px 6px;
+    font-size: 10px;
+    text-align: center;
+    background: rgba(0,0,0,0.75);
+    color: white;
+  }
+  .thumb.done .status { background: var(--success); }
+  .thumb.error .status { background: var(--danger); }
+  .thumb.processing .status { background: var(--accent); color: #111; }
+
+  .table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th {
+    background: var(--panel2);
+    padding: 10px 8px;
+    text-align: left;
+    position: sticky;
+    top: 0;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+    color: var(--accent2);
+  }
+  td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  td input {
+    width: 100%;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+    min-width: 80px;
+  }
+  td input:hover { background: var(--panel2); }
+  td input:focus { background: var(--panel2); border-color: var(--accent); outline: none; }
+
+  .log {
+    background: #0a0f1e;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    max-height: 200px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .log .ok { color: var(--success); }
+  .log .err { color: var(--danger); }
+  .log .info { color: var(--accent2); }
+
+  .action-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    background: var(--panel2);
+    color: var(--muted);
+    margin-left: 6px;
+  }
+  .hint {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+  .hint code {
+    background: var(--panel2);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--accent2);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>Coin Book → Sheet Extractor <span style="font-size:12px;background:#f59e0b;color:#111;padding:3px 8px;border-radius:10px;vertical-align:middle;">v2.9</span></h1>
+  <p>AI-powered data extraction from Indian Coinage book pages into your Google Sheet format</p>
+</header>
+
+<!-- STEP 1: API KEYS (Multi-provider with fallback) -->
+<div class="panel">
+  <h2><span class="step-num">1</span> AI API Keys (Multi-provider Fallback)</h2>
+  <p class="hint" style="margin-top:0;">Kam se kam <strong>ek</strong> key enable karo. Agar kai enabled hain to priority order: <strong>Claude → OpenAI → Gemini</strong>. Pehla jo succeed ho uska result use hoga. Fail hone par automatically agla try hoga. Toggle OFF karne se provider skip ho jayega.</p>
+
+  <label>🟣 Claude API key <span class="badge" id="keyStatus" style="margin-left:6px;">Not set</span></label>
+  <div class="row">
+    <input type="password" id="apiKey" placeholder="sk-ant-api03-... (from console.anthropic.com)" />
+    <button class="secondary" onclick="saveKey()" style="flex: 0 0 auto;">Save</button>
+    <button class="secondary" onclick="clearKey()" style="flex: 0 0 auto;">Clear</button>
+    <button id="claudeToggle" class="secondary" onclick="toggleProvider('claude')" style="flex: 0 0 auto;">OFF</button>
+  </div>
+
+  <label style="margin-top:10px;">🟢 OpenAI API key <span class="badge" id="openaiStatus" style="margin-left:6px;">Not set</span></label>
+  <div class="row">
+    <input type="password" id="openaiKey" placeholder="sk-... (from platform.openai.com)" />
+    <button class="secondary" onclick="saveOpenaiKey()" style="flex: 0 0 auto;">Save</button>
+    <button class="secondary" onclick="clearOpenaiKey()" style="flex: 0 0 auto;">Clear</button>
+    <button id="openaiToggle" class="secondary" onclick="toggleProvider('openai')" style="flex: 0 0 auto;">OFF</button>
+  </div>
+
+  <label style="margin-top:10px;">🔵 Gemini API key <span class="badge" id="geminiStatus" style="margin-left:6px;">Not set</span></label>
+  <div class="row">
+    <input type="password" id="geminiKey" placeholder="AIza... (from aistudio.google.com/apikey)" />
+    <button class="secondary" onclick="saveGeminiKey()" style="flex: 0 0 auto;">Save</button>
+    <button class="secondary" onclick="clearGeminiKey()" style="flex: 0 0 auto;">Clear</button>
+    <button id="geminiToggle" class="secondary" onclick="toggleProvider('gemini')" style="flex: 0 0 auto;">OFF</button>
+  </div>
+
+  <p class="hint" style="margin-top:10px;">Keys sirf aapke browser ki localStorage me save hoti hain — kisi server pe nahi jaati. Images directly aapki chuni hui API par jaati hain (Anthropic / OpenAI / Google). <strong>Active chain</strong>: <span id="activeChain" style="font-weight:600;color:#10b981;">none</span></p>
+</div>
+
+<!-- STEP 1b: GOOGLE SHEET URL -->
+<div class="panel">
+  <h2><span class="step-num">1b</span> Google Sheet Web App URL <span class="badge" id="sheetUrlStatus">Not set</span></h2>
+  <label>Paste your Apps Script Web App URL (see setup guide)</label>
+  <div class="row">
+    <input type="text" id="sheetUrl" placeholder="https://script.google.com/macros/s/AKfyc.../exec" />
+    <button class="secondary" onclick="saveSheetUrl()" style="flex: 0 0 auto;">Save URL</button>
+    <button class="secondary" onclick="testSheetUrl()" style="flex: 0 0 auto;">Test</button>
+  </div>
+  <p class="hint">Ye URL ek baar setup karni hai — dekho <code>Google Apps Script (paste in sheet).gs</code> file aur setup guide. Iske baad "Push to Google Sheet" button seedha aapki sheet me rows add kar dega.</p>
+</div>
+
+<!-- STEP 2: UPLOAD -->
+<div class="panel">
+  <h2><span class="step-num">2</span> Upload Book Page Photos</h2>
+  <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <div class="big">📚</div>
+    <p><strong>Click or drag & drop</strong> book page photos OR a PDF file</p>
+    <p style="font-size: 12px;">JPG / PNG / WEBP / PDF — PDFs auto-split into pages</p>
+  </div>
+  <input type="file" id="fileInput" multiple accept="image/*,application/pdf" style="display: none;" onchange="handleFiles(this.files)" />
+  <p class="hint" style="margin-top:10px;">📄 <strong>PDF support:</strong> Aap poori book ki PDF bhi drop kar sakte ho — har page automatically image me convert hoke process hoga. 350 pages bhi chalega (approx 1-2 ghante + ~₹500-800 API cost).</p>
+  <div class="thumbs" id="thumbs"></div>
+</div>
+
+<!-- STEP 3: EXTRACT -->
+<div class="panel">
+  <h2><span class="step-num">3</span> Extract Data with AI</h2>
+  <div class="action-bar">
+    <button id="extractBtn" onclick="extractAll()">🚀 Extract Data from All Photos</button>
+    <button class="secondary" onclick="clearAll()">Clear All</button>
+  </div>
+  <div class="log" id="log" style="margin-top: 12px;">Ready. Upload photos and click Extract.</div>
+</div>
+
+<!-- STEP 4: PREVIEW & EXPORT -->
+<div class="panel" id="resultsPanel" style="display: none;">
+  <h2><span class="step-num">4</span> Review & Export <span class="badge" id="rowCount">0 rows</span></h2>
+  <p class="hint">Click any cell to edit. Empty cells are fields the AI couldn't find (will be skipped in the sheet).</p>
+  <div class="table-wrap">
+    <table id="resultTable">
+      <thead>
+        <tr>
+          <th>Denomination</th>
+          <th>Year</th>
+          <th>Mint</th>
+          <th>Rarity Index</th>
+          <th>Category</th>
+          <th>Metals</th>
+          <th>Type</th>
+          <th>Weight (grams)</th>
+          <th>Size (mm)</th>
+          <th>Thickness (mm)</th>
+          <th>Shape</th>
+          <th>Fine</th>
+          <th>Very Fine</th>
+          <th>Extremely Fine</th>
+          <th>UNC</th>
+          <th>Country</th>
+          <th>Commemorative Theme</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="resultBody"></tbody>
+    </table>
+  </div>
+  <div class="action-bar">
+    <button class="success" onclick="pushToSheet(event)">🚀 Push to Google Sheet (Auto)</button>
+    <button onclick="copyTSV()">📋 Copy for Google Sheet (TSV)</button>
+    <button class="secondary" onclick="downloadCSV()">⬇ Download CSV</button>
+    <button class="danger" onclick="clearResults()">Clear Rows</button>
+  </div>
+  <p class="hint">
+    <strong>How to paste in Google Sheet:</strong> Click "Copy for Google Sheet" → open your sheet → click the first empty cell in column A → press <code>Ctrl+V</code> (or <code>Cmd+V</code> on Mac). Rows will auto-fill into the correct columns.
+  </p>
+</div>
+
+</div>
+
+<script>
+// ============================================
+// STATE
+// ============================================
+let images = []; // {id, file, dataUrl, status, base64, mediaType}
+let results = []; // rows
+
+// ============================================
+// API KEY MANAGEMENT
+// ============================================
+function saveKey() {
+  // Aggressive trim: remove all whitespace/newlines/tabs/quotes that might sneak in during paste
+  let key = document.getElementById('apiKey').value;
+  key = key.replace(/[\s\r\n\t"']/g, '').trim();
+  if (!key) { alert('Please enter a key'); return; }
+  if (!key.startsWith('sk-ant-')) {
+    if (!confirm('This does not look like an Anthropic API key (should start with "sk-ant-"). Save anyway?')) return;
+  }
+  localStorage.setItem('anthropic_api_key', key);
+  setProviderEnabled('claude', true);
+  document.getElementById('apiKey').value = key;
+  updateKeyStatus();
+  updateToggleButtons();
+  log(`API key saved. Preview: ${key.slice(0, 12)}...${key.slice(-4)} (length: ${key.length})`, 'ok');
+}
+function clearKey() {
+  localStorage.removeItem('anthropic_api_key');
+  setProviderEnabled('claude', false);
+  document.getElementById('apiKey').value = '';
+  updateKeyStatus();
+  updateToggleButtons();
+}
+function updateKeyStatus() {
+  const key = localStorage.getItem('anthropic_api_key');
+  const badge = document.getElementById('keyStatus');
+  if (key) {
+    const preview = key.slice(0, 12) + '...' + key.slice(-4);
+    badge.textContent = `Saved ✓ (${preview}, len=${key.length})`;
+    badge.style.background = 'rgba(16, 185, 129, 0.2)';
+    badge.style.color = '#10b981';
+    document.getElementById('apiKey').value = key;
+  } else {
+    badge.textContent = 'Not set';
+    badge.style.background = '';
+    badge.style.color = '';
+  }
+}
+
+// ---- OpenAI key ----
+function saveOpenaiKey() {
+  let key = document.getElementById('openaiKey').value;
+  key = key.replace(/[\s\r\n\t"']/g, '').trim();
+  if (!key) { alert('Please enter a key'); return; }
+  if (!key.startsWith('sk-')) {
+    if (!confirm('This does not look like an OpenAI key (should start with "sk-"). Save anyway?')) return;
+  }
+  localStorage.setItem('openai_api_key', key);
+  setProviderEnabled('openai', true);
+  document.getElementById('openaiKey').value = key;
+  updateOpenaiStatus();
+  updateToggleButtons();
+  log(`OpenAI key saved. Preview: ${key.slice(0, 6)}...${key.slice(-4)} (len=${key.length})`, 'ok');
+}
+function clearOpenaiKey() {
+  localStorage.removeItem('openai_api_key');
+  setProviderEnabled('openai', false);
+  document.getElementById('openaiKey').value = '';
+  updateOpenaiStatus();
+  updateToggleButtons();
+}
+function updateOpenaiStatus() {
+  const key = localStorage.getItem('openai_api_key');
+  const badge = document.getElementById('openaiStatus');
+  if (key) {
+    badge.textContent = `Saved ✓ (${key.slice(0,6)}...${key.slice(-4)})`;
+    badge.style.background = 'rgba(16, 185, 129, 0.2)';
+    badge.style.color = '#10b981';
+    document.getElementById('openaiKey').value = key;
+  } else {
+    badge.textContent = 'Not set';
+    badge.style.background = '';
+    badge.style.color = '';
+  }
+}
+
+// ---- Gemini key ----
+function saveGeminiKey() {
+  let key = document.getElementById('geminiKey').value;
+  key = key.replace(/[\s\r\n\t"']/g, '').trim();
+  if (!key) { alert('Please enter a key'); return; }
+  if (!key.startsWith('AIza')) {
+    if (!confirm('This does not look like a Google API key (should start with "AIza"). Save anyway?')) return;
+  }
+  localStorage.setItem('gemini_api_key', key);
+  setProviderEnabled('gemini', true);
+  document.getElementById('geminiKey').value = key;
+  updateGeminiStatus();
+  updateToggleButtons();
+  log(`Gemini key saved. Preview: ${key.slice(0, 8)}...${key.slice(-4)} (len=${key.length})`, 'ok');
+}
+function clearGeminiKey() {
+  localStorage.removeItem('gemini_api_key');
+  setProviderEnabled('gemini', false);
+  document.getElementById('geminiKey').value = '';
+  updateGeminiStatus();
+  updateToggleButtons();
+}
+function updateGeminiStatus() {
+  const key = localStorage.getItem('gemini_api_key');
+  const badge = document.getElementById('geminiStatus');
+  if (key) {
+    badge.textContent = `Saved ✓ (${key.slice(0,8)}...${key.slice(-4)})`;
+    badge.style.background = 'rgba(16, 185, 129, 0.2)';
+    badge.style.color = '#10b981';
+    document.getElementById('geminiKey').value = key;
+  } else {
+    badge.textContent = 'Not set';
+    badge.style.background = '';
+    badge.style.color = '';
+  }
+}
+
+// ============================================
+// PROVIDER ON/OFF TOGGLES
+// ============================================
+// Provider is "active" only if BOTH key is saved AND toggle is ON.
+// Default: when a key is saved for the first time, toggle turns ON automatically.
+// Storage keys: 'claude_enabled' | 'openai_enabled' | 'gemini_enabled' ('1' = on, '0' = off, null = off)
+
+function isProviderEnabled(p) {
+  return localStorage.getItem(p + '_enabled') === '1';
+}
+function setProviderEnabled(p, on) {
+  localStorage.setItem(p + '_enabled', on ? '1' : '0');
+}
+function providerKey(p) {
+  if (p === 'claude') return localStorage.getItem('anthropic_api_key');
+  if (p === 'openai') return localStorage.getItem('openai_api_key');
+  if (p === 'gemini') return localStorage.getItem('gemini_api_key');
+  return null;
+}
+function toggleProvider(p) {
+  const key = providerKey(p);
+  if (!key) {
+    alert('Pehle is provider ki API key save karo, phir enable kar sakte ho.');
+    return;
+  }
+  setProviderEnabled(p, !isProviderEnabled(p));
+  updateToggleButtons();
+}
+function updateToggleButtons() {
+  const map = { claude: 'claudeToggle', openai: 'openaiToggle', gemini: 'geminiToggle' };
+  const labels = { claude: 'Claude', openai: 'OpenAI', gemini: 'Gemini' };
+  const activeNames = [];
+  for (const p of ['claude', 'openai', 'gemini']) {
+    const btn = document.getElementById(map[p]);
+    if (!btn) continue;
+    const hasKey = !!providerKey(p);
+    const enabled = hasKey && isProviderEnabled(p);
+    if (enabled) {
+      btn.textContent = '✓ ON';
+      btn.style.background = '#10b981';
+      btn.style.color = '#fff';
+      btn.style.borderColor = '#10b981';
+      activeNames.push(labels[p]);
+    } else {
+      btn.textContent = 'OFF';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }
+    if (!hasKey) {
+      btn.style.opacity = '0.5';
+      btn.title = 'Save a key first';
+    } else {
+      btn.style.opacity = '1';
+      btn.title = enabled ? 'Click to disable' : 'Click to enable';
+    }
+  }
+  const chainEl = document.getElementById('activeChain');
+  if (chainEl) {
+    chainEl.textContent = activeNames.length ? activeNames.join(' → ') : 'none (enable at least one)';
+    chainEl.style.color = activeNames.length ? '#10b981' : '#ef4444';
+  }
+}
+
+// ============================================
+// GOOGLE SHEET URL MANAGEMENT
+// ============================================
+function saveSheetUrl() {
+  const url = document.getElementById('sheetUrl').value.trim();
+  if (!url) { alert('Please enter the Apps Script web app URL'); return; }
+  if (!url.startsWith('https://script.google.com/')) {
+    if (!confirm('This does not look like a script.google.com URL. Save anyway?')) return;
+  }
+  localStorage.setItem('sheet_webapp_url', url);
+  updateSheetUrlStatus();
+  log('Google Sheet URL saved.', 'ok');
+}
+function updateSheetUrlStatus() {
+  const url = localStorage.getItem('sheet_webapp_url');
+  const badge = document.getElementById('sheetUrlStatus');
+  if (url) {
+    badge.textContent = 'Saved ✓';
+    badge.style.background = 'rgba(16, 185, 129, 0.2)';
+    badge.style.color = '#10b981';
+    document.getElementById('sheetUrl').value = url;
+  } else {
+    badge.textContent = 'Not set';
+    badge.style.background = '';
+    badge.style.color = '';
+  }
+}
+// Detect if we're running from file:// (needs no-cors) or http/https (can use cors)
+function isFileProtocol() {
+  return window.location.protocol === 'file:';
+}
+
+async function testSheetUrl() {
+  const url = (localStorage.getItem('sheet_webapp_url') || document.getElementById('sheetUrl').value || '').trim();
+  if (!url) { alert('Please enter and save the URL first'); return; }
+
+  log(`Testing Google Sheet URL (protocol: ${window.location.protocol})...`, 'info');
+
+  if (isFileProtocol()) {
+    // file:// context - fetch with cors is blocked, so we send a no-cors ping
+    // and use a separate verification: open URL in new tab for visual check
+    log('Running from file:// — using no-cors ping + new tab visual test', 'info');
+    try {
+      // Fire a no-cors ping (we can\'t read response but can confirm no network error)
+      await fetch(url, { method: 'GET', mode: 'no-cors' });
+      log('✓ No-cors ping succeeded. URL is reachable.', 'ok');
+      window.open(url, '_blank');
+      setTimeout(() => {
+        alert('A new tab opened with your Apps Script URL.\n\nIf you see JSON like {"ok":true,"message":"Coin Data Receiver is running",...} then the connection is WORKING. You can now use "Push to Google Sheet" button.\n\nIf you see an error or login page, the deployment needs fixing (Who has access = Anyone).');
+      }, 500);
+    } catch (e) {
+      log('✗ Network error: ' + e.message, 'err');
+      alert('Network error reaching the URL: ' + e.message);
+    }
+  } else {
+    // http:// or https:// context - can use regular fetch and read response
+    try {
+      const resp = await fetch(url, { method: 'GET', redirect: 'follow' });
+      const text = await resp.text();
+      try {
+        const data = JSON.parse(text);
+        if (data.ok) {
+          log('✓ Connection OK — ' + (data.message || 'ready'), 'ok');
+          alert('✓ Connected successfully!\n\n' + (data.message || 'Ready to receive data'));
+        } else {
+          log('✗ Server not ok: ' + text.slice(0, 200), 'err');
+        }
+      } catch (e) {
+        log('Server returned non-JSON. Likely deployment access is not "Anyone".', 'err');
+        alert('Response was not JSON. Check deployment settings: "Who has access" must be "Anyone".\n\nResponse preview:\n' + text.slice(0, 300));
+      }
+    } catch (e) {
+      log('✗ Test failed: ' + e.message, 'err');
+      alert('Connection failed: ' + e.message);
+    }
+  }
+}
+
+// v2.7: Direct fetch with text/plain Content-Type.
+// text/plain is a CORS "simple request" — no preflight, no CORS error on HTTPS.
+// Apps Script reads e.postData.contents and parses as JSON directly.
+// BONUS: We actually read the real response, so no more silent failures.
+async function pushToSheet(ev) {
+  if (results.length === 0) { alert('No rows to push.'); return; }
+  const url = (localStorage.getItem('sheet_webapp_url') || '').trim();
+  if (!url) { alert('Please save your Google Sheet Web App URL first (Step 1b).'); return; }
+
+  if (!confirm(`Push ${results.length} rows to your Google Sheet?`)) return;
+
+  const rowsData = results.map(r => FIELDS.map(f => String(r[f] || '')));
+  const payload = JSON.stringify({ rows: rowsData });
+
+  log(`Pushing ${results.length} rows to Google Sheet...`, 'info');
+  log(`Payload size: ${payload.length} chars`, 'info');
+
+  const btn = ev && ev.target;
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Pushing...'; }
+
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: payload,
+      redirect: 'follow'
+    });
+    const text = await resp.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      log('✗ Server returned non-JSON response: ' + text.slice(0, 200), 'err');
+      alert('Server returned unexpected response. Check Apps Script deployment.\n\nFirst 200 chars:\n' + text.slice(0, 200));
+      return;
+    }
+    if (data.ok) {
+      log(`✓ Added ${data.added} rows to "${data.sheetName}" starting at row ${data.startRow}`, 'ok');
+      const clearNow = confirm(
+        `✓ SUCCESS!\n\nAdded ${data.added} rows to sheet "${data.sheetName}"\nStarting at row ${data.startRow}\n\n` +
+        `OK = clear the preview table\nCancel = keep rows here`
+      );
+      if (clearNow) {
+        results = [];
+        renderResults();
+        log('Table cleared. Ready for next batch.', 'ok');
+      }
+    } else {
+      log('✗ Server error: ' + (data.error || 'unknown'), 'err');
+      alert('Push failed: ' + (data.error || 'unknown error'));
+    }
+  } catch (e) {
+    log('✗ Error: ' + e.message, 'err');
+    alert('Error: ' + e.message + '\n\nUse "Copy for Google Sheet" as a fallback.');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🚀 Push to Google Sheet (Auto)'; }
+  }
+}
+
+// ============================================
+// LOGGING
+// ============================================
+function log(msg, type = 'info') {
+  const el = document.getElementById('log');
+  const time = new Date().toLocaleTimeString();
+  const cls = type === 'ok' ? 'ok' : type === 'err' ? 'err' : 'info';
+  el.innerHTML += `<div class="${cls}">[${time}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// ============================================
+// FILE HANDLING
+// ============================================
+const dropZone = document.getElementById('dropZone');
+['dragenter', 'dragover'].forEach(ev => {
+  dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+});
+['dragleave', 'drop'].forEach(ev => {
+  dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.classList.remove('dragover'); });
+});
+dropZone.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+
+async function handleFiles(files) {
+  for (const file of files) {
+    if (file.type === 'application/pdf') {
+      await addPdfPages(file);
+    } else if (file.type.startsWith('image/')) {
+      const id = 'img_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      const dataUrl = await fileToDataUrl(file);
+      const base64 = dataUrl.split(',')[1];
+      images.push({ id, file, dataUrl, base64, mediaType: file.type, status: 'ready', name: file.name });
+    }
+  }
+  renderThumbs();
+}
+
+async function addPdfPages(file) {
+  if (!window.pdfjsLib) { alert('PDF library not loaded. Please check your internet connection and reload.'); return; }
+  log(`Loading PDF: ${file.name}...`, 'info');
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    log(`PDF has ${pdf.numPages} pages. Converting to images...`, 'info');
+    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+      const page = await pdf.getPage(pageNum);
+      const viewport = page.getViewport({ scale: 2.0 }); // 2x for readability
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d');
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      const base64 = dataUrl.split(',')[1];
+      const id = 'pdf_' + Date.now() + '_p' + pageNum;
+      images.push({
+        id, file: null, dataUrl, base64,
+        mediaType: 'image/jpeg',
+        status: 'ready',
+        name: `${file.name} — page ${pageNum}`
+      });
+      if (pageNum % 10 === 0 || pageNum === pdf.numPages) {
+        log(`  Converted ${pageNum}/${pdf.numPages} pages`, 'info');
+        renderThumbs();
+      }
+    }
+    log(`✓ PDF ready: ${pdf.numPages} pages loaded`, 'ok');
+  } catch (e) {
+    log(`✗ PDF load failed: ${e.message}`, 'err');
+    alert('Failed to load PDF: ' + e.message);
+  }
+}
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+function renderThumbs() {
+  const container = document.getElementById('thumbs');
+  container.innerHTML = '';
+  images.forEach(img => {
+    const div = document.createElement('div');
+    div.className = 'thumb ' + img.status;
+    const label = (img.name || 'image').length > 20 ? (img.name || '').slice(-20) : (img.name || '');
+    div.innerHTML = `
+      <img src="${img.dataUrl}" title="${img.name || ''}" />
+      <button class="remove" onclick="removeImage('${img.id}')">×</button>
+      <div class="status">${img.status}</div>
+    `;
+    container.appendChild(div);
+  });
+}
+function removeImage(id) {
+  images = images.filter(i => i.id !== id);
+  renderThumbs();
+}
+function clearAll() {
+  images = [];
+  renderThumbs();
+  document.getElementById('log').innerHTML = 'Cleared.';
+}
+
+// ============================================
+// EXTRACTION PROMPT
+// ============================================
+const EXTRACTION_PROMPT = `You are an expert numismatist looking at a page from the reference book "Indian Coinage - Republic India".
+
+Your task: Extract EVERY coin row from the data table(s) on this page into structured JSON.
+
+═══════════════════════════════════════════════
+STEP 1 — PAGE TYPE DETECTION (CRITICAL, DO THIS FIRST)
+═══════════════════════════════════════════════
+
+Look at the page header/title. It will say either "Indian Coinage - Republic India" or similar. Below that, look for the word "COMMEMORATIVE COINS" as a page-level title.
+
+Also look at the section headers inside numbered boxes (e.g., "14.1", "14.2", "14.3", "15.1", "16.2"):
+
+╔═══════════════════════════════════════════════╗
+║ RULE A — COMMEMORATIVE PAGE (type = "Commemorative Coins") ║
+╚═══════════════════════════════════════════════╝
+TRIGGER — ANY ONE of these conditions means it's commemorative:
+  • Page has "COMMEMORATIVE COINS" title anywhere at the top
+  • Section headers have format "NN.N  THEME_PHRASE  YEAR" (e.g., "14.1 FOOD AND WORK FOR ALL (F.A.O SERIES) 1976")
+  • Section header mentions any of: F.A.O, FAO, WORLD FOOD, INTERNATIONAL YEAR, COMMEMORATIVE, JUBILEE, CENTENARY, ANNIVERSARY, BIRTH CENTENARY, MAHATMA GANDHI, NEHRU, INDIRA, RAJIV, SUBHAS CHANDRA, TAGORE, OLYMPICS, ASIAN GAMES, HOCKEY, CRICKET, SAVE FOR DEVELOPMENT, FOOD AND SHELTER, HAPPY CHILD, NATION'S PRIDE, etc.
+  • Spec box lists a SINGLE year (not a range), and the sub-table has columns: Mint | F | VF | XF | UNC | Rarity
+
+For EVERY row from a commemorative section:
+  → type = "Commemorative Coins"   (EXACTLY this string, never "Definitive Series Coins" or "Decimal Series Coins")
+  → commemorative_theme = theme phrase from the section header, Title Case, WITHOUT the leading number and WITHOUT the trailing year
+     Examples:
+       "14.1 FOOD AND WORK FOR ALL (F.A.O SERIES) 1976" → "Food and Work For All (F.A.O Series)"
+       "14.2 SAVE FOR DEVELOPMENT (F.A.O SERIES) 1977"  → "Save For Development (F.A.O Series)"
+       "14.3 FOOD & SHELTER FOR ALL (F.A.O SERIES) 1978" → "Food & Shelter For All (F.A.O Series)"
+       "14.4 HAPPY CHILD - NATION'S PRIDE (F.A.O) INTERNATIONAL YEAR OF CHILD 1979" → "Happy Child - Nation's Pride (F.A.O) International Year of Child"
+
+╔═══════════════════════════════════════════════╗
+║ RULE B — DEFINITIVE / DECIMAL PAGE ║
+╚═══════════════════════════════════════════════╝
+TRIGGER — section header is JUST a denomination like "25 NAYE PAISE", "HALF ANNA", "ONE RUPEE", "20 PAISE", with no theme phrase and no F.A.O/commemorative keywords. Data table has columns: IC#, Year, Remarks, VF, XF, UNC, Rarity, Mint. Multiple years listed.
+
+For EVERY row from a definitive section:
+  → type: Anna/Pice/Rupee (pre-1957) → "Definitive Series Coins". Naya Paisa/Naye Paise (1957-1964) → "Decimal Series Coins". Paise/Rupee (1964+) → "Decimal Series Coins".
+  → commemorative_theme = ""  (empty string)
+
+If a page has BOTH definitive and commemorative sections, apply the correct rule per section.
+If the page says "COMMEMORATIVE COINS" at the top, EVERY row on that page MUST have type="Commemorative Coins" — no exceptions.
+
+STEP 2 — For EVERY coin row (one per year+mint combination), output one JSON object with these EXACT fields:
+
+{
+  "denomination": "from section header, title case (e.g., '5 Paise', 'One Pice', '25 Naye Paise', 'One Rupee')",
+  "year": "4-digit year as string",
+  "mint": "expand abbreviation: Bombay → 'Bombay (Mumbai Mint)', Calcutta → 'Calcutta (Kolkatta Mint)', Hyderabad → 'Hyderabad Mint'",
+  "rarity_index": "expand letter code: C → 'Common', S → 'Scarce', R → 'Rare', UR → 'Ultra Rare', N → 'Normal'. If blank, empty string.",
+  "category": "Republic India Coinage",
+  "metals": "from spec box exactly as written (e.g., 'Nickel', 'Copper - Nickel', 'Aluminium-Magnesium', 'Bronze', 'Brass', 'Aluminium')",
+  "type": "MUST match the rule from Step 1. Commemorative section → EXACTLY 'Commemorative Coins'. Definitive: Anna/Pice/Rupee (pre-1957) → 'Definitive Series Coins'. Decimal: Naya Paisa/Naye Paise/Paise/Rupee on non-commemorative page → 'Decimal Series Coins'. If page title says COMMEMORATIVE COINS, ALWAYS use 'Commemorative Coins'.",
+  "weight_grams": "number with unit (e.g., '1.5 grams', '2.92 grams'). Convert 'gms' → 'grams'.",
+  "size_mm": "number with unit (e.g., '22 mm', '19 mm'). Keep '(Diagonal)' or similar qualifier if present, e.g. '22 mm (Diagonal)'.",
+  "thickness_mm": "leave as empty string if not in book",
+  "shape": "from spec box (e.g., 'Circular', 'Scalloped', 'Square with rounded corners')",
+  "fine": "F column value with ₹ prefix (e.g., '₹5.00'). Commemorative pages have this column. Definitive pages usually don't — leave empty string.",
+  "very_fine": "VF value with ₹ prefix. If blank, empty string.",
+  "extremely_fine": "XF value with ₹ prefix",
+  "unc": "UNC value with ₹ prefix",
+  "obverse_image_url": "",
+  "reverse_image_url": "",
+  "country": "India",
+  "obverse_description": "",
+  "reverse_description": "",
+  "commemorative_theme": "COMMEMORATIVE rows ONLY — theme phrase from the section header in Title Case, WITHOUT the leading NN.N number and WITHOUT the trailing year. MUST be filled for every row whose type is 'Commemorative Coins'. Examples: '14.1 FOOD AND WORK FOR ALL (F.A.O SERIES) 1976' → 'Food and Work For All (F.A.O Series)'. '14.2 SAVE FOR DEVELOPMENT (F.A.O SERIES) 1977' → 'Save For Development (F.A.O Series)'. '14.3 FOOD & SHELTER FOR ALL (F.A.O SERIES) 1978' → 'Food & Shelter For All (F.A.O Series)'. '14.4 HAPPY CHILD - NATION\\'S PRIDE (F.A.O) INTERNATIONAL YEAR OF CHILD 1979' → 'Happy Child - Nation\\'s Pride (F.A.O) International Year of Child'. For DEFINITIVE/DECIMAL rows leave as empty string \\"\\"."
+}
+
+CRITICAL RULES:
+- Output ONLY valid JSON — an array of objects, nothing else. No markdown, no explanation.
+- Create ONE object per (year, mint) combination.
+- ALWAYS include ALL 21 keys in every object, even if empty string.
+- obverse_image_url, reverse_image_url, obverse_description, reverse_description → ALWAYS empty string "".
+- country → ALWAYS "India".
+- CONSISTENCY CHECK: If type = "Commemorative Coins", then commemorative_theme MUST be non-empty. If commemorative_theme is non-empty, then type MUST be "Commemorative Coins". These two fields move together.
+- If you see ANY of these in the section header — F.A.O, FAO, COMMEMORATIVE, JUBILEE, CENTENARY, ANNIVERSARY, INTERNATIONAL YEAR, NATION'S PRIDE, WORLD FOOD DAY, SAVE FOR DEVELOPMENT, FOOD & SHELTER, HAPPY CHILD — it is ALWAYS commemorative. Do not classify as definitive.
+- If a value is missing/unclear/blank in the book, use an empty string "" — DO NOT guess or fabricate.
+- Prices: always prefix with ₹ and format as "₹X.00" (e.g., 10 → "₹10.00", 1500 → "₹1,500.00" is ok).
+- If the page has multiple sections, extract coins from ALL of them.
+- Be thorough — do not skip any row.
+
+Return format: [{"denomination": "...", ...}, {"denomination": "...", ...}, ...]`;
+
+// ============================================
+// EXTRACTION (Multi-provider with fallback)
+// ============================================
+async function extractAll() {
+  const claudeKey = localStorage.getItem('anthropic_api_key');
+  const openaiKey = localStorage.getItem('openai_api_key');
+  const geminiKey = localStorage.getItem('gemini_api_key');
+
+  // Build provider chain in priority order — only include providers that are BOTH
+  // saved (key present) AND toggled ON. Keys with toggle OFF are skipped entirely.
+  const providers = [];
+  if (claudeKey && isProviderEnabled('claude')) providers.push({ name: 'Claude', fn: (b64, mt) => callClaudeVision(claudeKey, b64, mt) });
+  if (openaiKey && isProviderEnabled('openai')) providers.push({ name: 'OpenAI', fn: (b64, mt) => callOpenAIVision(openaiKey, b64, mt) });
+  if (geminiKey && isProviderEnabled('gemini')) providers.push({ name: 'Gemini', fn: (b64, mt) => callGeminiVision(geminiKey, b64, mt) });
+
+  if (providers.length === 0) {
+    alert('Koi bhi provider ON nahi hai. Kam se kam ek key save karke uska toggle ON karo.');
+    return;
+  }
+  if (images.length === 0) { alert('Please upload at least one image.'); return; }
+
+  log(`Active providers (fallback order): ${providers.map(p => p.name).join(' → ')}`, 'info');
+
+  const btn = document.getElementById('extractBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Extracting...';
+
+  results = [];
+  let totalRows = 0;
+
+  for (const img of images) {
+    img.status = 'processing';
+    renderThumbs();
+    log(`Processing ${(img.name || 'image')}...`);
+
+    let rows = null;
+    let lastErr = null;
+    for (const p of providers) {
+      try {
+        log(`  → trying ${p.name}...`, 'info');
+        rows = await p.fn(img.base64, img.mediaType);
+        log(`  ✓ ${p.name} succeeded (${rows.length} rows)`, 'ok');
+        break;
+      } catch (e) {
+        lastErr = e;
+        log(`  ✗ ${p.name} failed: ${e.message}`, 'err');
+        // continue to next provider
+      }
+    }
+
+    if (rows) {
+      const normalized = rows.map(normalizeRow);
+      results.push(...normalized);
+      totalRows += normalized.length;
+      img.status = 'done';
+      log(`✓ ${(img.name || 'image')} → ${rows.length} rows extracted`, 'ok');
+    } else {
+      img.status = 'error';
+      log(`✗ ${(img.name || 'image')} → all providers failed. Last error: ${lastErr ? lastErr.message : 'unknown'}`, 'err');
+    }
+    renderThumbs();
+  }
+
+  log(`Done. Total rows: ${totalRows}`, 'ok');
+  btn.disabled = false;
+  btn.textContent = '🚀 Extract Data from All Photos';
+  renderResults();
+}
+
+// Shared helper: pull a JSON array out of a model's text output
+function parseJsonArray(text, providerName) {
+  const trimmed = (text || '').trim();
+  let jsonText = trimmed;
+  // Strip ```json ... ``` fences if present
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence) jsonText = fence[1].trim();
+  // Grab first [...] block
+  const match = jsonText.match(/\[[\s\S]*\]/);
+  if (match) jsonText = match[0];
+  try {
+    const parsed = JSON.parse(jsonText);
+    if (!Array.isArray(parsed)) throw new Error('Response is not an array');
+    return parsed;
+  } catch (e) {
+    throw new Error(`Could not parse JSON from ${providerName} response: ${e.message}`);
+  }
+}
+
+// ---- Claude (Anthropic) ----
+async function callClaudeVision(apiKey, base64, mediaType) {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 8000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+          { type: 'text', text: EXTRACTION_PROMPT }
+        ]
+      }]
+    })
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Claude ${response.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await response.json();
+  const text = data.content[0].text;
+  return parseJsonArray(text, 'Claude');
+}
+
+// ---- OpenAI (GPT-4o vision) ----
+async function callOpenAIVision(apiKey, base64, mediaType) {
+  const dataUrl = `data:${mediaType};base64,${base64}`;
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      max_tokens: 8000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: EXTRACTION_PROMPT },
+          { type: 'image_url', image_url: { url: dataUrl, detail: 'high' } }
+        ]
+      }]
+    })
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`OpenAI ${response.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await response.json();
+  const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!text) throw new Error('OpenAI returned no content');
+  return parseJsonArray(text, 'OpenAI');
+}
+
+// ---- Gemini (Google) ----
+async function callGeminiVision(apiKey, base64, mediaType) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { inline_data: { mime_type: mediaType, data: base64 } },
+          { text: EXTRACTION_PROMPT }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 8192
+      }
+    })
+  });
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Gemini ${response.status}: ${err.slice(0, 200)}`);
+  }
+  const data = await response.json();
+  const text = data.candidates && data.candidates[0] && data.candidates[0].content
+    && data.candidates[0].content.parts && data.candidates[0].content.parts[0]
+    && data.candidates[0].content.parts[0].text;
+  if (!text) throw new Error('Gemini returned no content');
+  return parseJsonArray(text, 'Gemini');
+}
+
+// ============================================
+// RESULTS TABLE
+// ============================================
+// FIELDS = full 21-column master list (A–U) matching the Google Sheet exactly.
+// Hidden fields are still pushed to the sheet (as empty strings) but NOT shown
+// in the review table — keeps preview compact while preserving column alignment.
+const FIELDS = [
+  'denomination', 'year', 'mint', 'rarity_index', 'category', 'metals', 'type',
+  'weight_grams', 'size_mm', 'thickness_mm', 'shape', 'fine', 'very_fine',
+  'extremely_fine', 'unc',
+  'obverse_image_url', 'reverse_image_url', 'country',
+  'obverse_description', 'reverse_description', 'commemorative_theme'
+];
+const HIDDEN_FIELDS = new Set([
+  'obverse_image_url', 'reverse_image_url',
+  'obverse_description', 'reverse_description'
+]);
+const VISIBLE_FIELDS = FIELDS.filter(f => !HIDDEN_FIELDS.has(f));
+
+// Safety net: if AI omits any of the 21 keys, fill them in before rendering/export.
+// Also cross-checks type ↔ commemorative_theme consistency so one field can fix the other.
+const COMMEMORATIVE_KEYWORDS = [
+  'f.a.o', 'fao', 'commemorative', 'jubilee', 'centenary', 'anniversary',
+  'international year', "nation's pride", 'nations pride', 'world food',
+  'save for development', 'food & shelter', 'food and shelter', 'happy child',
+  'food and work for all', 'olympics', 'asian games'
+];
+
+function normalizeRow(row) {
+  const out = {};
+  FIELDS.forEach(f => { out[f] = (row && row[f] != null) ? String(row[f]) : ''; });
+  // Enforced constants
+  if (!out.country) out.country = 'India';
+  if (!out.category) out.category = 'Republic India Coinage';
+
+  // --- Commemorative cross-check ---
+  const theme = out.commemorative_theme.trim();
+  const typeLower = out.type.trim().toLowerCase();
+
+  // 1) If theme is filled → type MUST be "Commemorative Coins"
+  if (theme && typeLower !== 'commemorative coins') {
+    out.type = 'Commemorative Coins';
+  }
+  // 2) If type is "Commemorative Coins" but theme empty → leave as-is (nothing to infer),
+  //    but log a console warning so user sees it during testing.
+  if (out.type === 'Commemorative Coins' && !theme) {
+    console.warn('normalizeRow: type=Commemorative Coins but theme is empty', out);
+  }
+  // 3) If AI missed commemorative classification entirely but there are commemorative
+  //    keywords inside any of the string fields, try to catch it (weak fallback).
+  if (!theme && out.type !== 'Commemorative Coins') {
+    const blob = (out.denomination + ' ' + out.metals + ' ' + out.mint).toLowerCase();
+    if (COMMEMORATIVE_KEYWORDS.some(k => blob.includes(k))) {
+      out.type = 'Commemorative Coins';
+      console.warn('normalizeRow: forced type=Commemorative Coins via keyword fallback', out);
+    }
+  }
+  return out;
+}
+
+function renderResults() {
+  if (results.length === 0) {
+    document.getElementById('resultsPanel').style.display = 'none';
+    return;
+  }
+  document.getElementById('resultsPanel').style.display = 'block';
+  document.getElementById('rowCount').textContent = `${results.length} rows`;
+  const tbody = document.getElementById('resultBody');
+  tbody.innerHTML = '';
+  results.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    VISIBLE_FIELDS.forEach(f => {
+      const td = document.createElement('td');
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = row[f] || '';
+      input.addEventListener('change', e => { results[idx][f] = e.target.value; });
+      td.appendChild(input);
+      tr.appendChild(td);
+    });
+    // Delete button
+    const delTd = document.createElement('td');
+    const delBtn = document.createElement('button');
+    delBtn.className = 'danger';
+    delBtn.style.padding = '4px 8px';
+    delBtn.style.fontSize = '11px';
+    delBtn.textContent = '✕';
+    delBtn.onclick = () => { results.splice(idx, 1); renderResults(); };
+    delTd.appendChild(delBtn);
+    tr.appendChild(delTd);
+    tbody.appendChild(tr);
+  });
+}
+
+function clearResults() {
+  if (!confirm('Clear all extracted rows?')) return;
+  results = [];
+  renderResults();
+}
+
+// ============================================
+// EXPORT
+// ============================================
+function copyTSV() {
+  if (results.length === 0) { alert('No rows to copy.'); return; }
+  const rows = results.map(r => FIELDS.map(f => String(r[f] || '').replace(/\t/g, ' ').replace(/\r?\n/g, ' ')).join('\t'));
+  const tsv = rows.join('\n');
+  copyToClipboard(tsv, `✓ ${results.length} rows copied!\n\nGo to your Google Sheet, click the first empty cell in column A, and press Ctrl+V (Cmd+V on Mac).`);
+}
+
+function copyToClipboard(text, successMsg) {
+  // Method 1: modern Clipboard API (works on https:// and localhost)
+  const tryModern = async () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (e) { return false; }
+    }
+    return false;
+  };
+
+  // Method 2: execCommand fallback (works on file:// and older browsers)
+  const tryLegacy = () => {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.left = '-9999px';
+      ta.style.top = '0';
+      ta.setAttribute('readonly', '');
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) { return false; }
+  };
+
+  // Method 3: manual textarea for user to Ctrl+C
+  const showManual = () => {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+    modal.innerHTML = `
+      <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:20px;max-width:800px;width:100%;max-height:80vh;display:flex;flex-direction:column;gap:12px;">
+        <div style="color:#fbbf24;font-weight:600;font-size:16px;">⚠ Automatic copy blocked — please copy manually</div>
+        <div style="color:#94a3b8;font-size:13px;">Click inside the box below, press <b>Ctrl+A</b> to select all, then <b>Ctrl+C</b> to copy. Then paste into your Google Sheet.</div>
+        <textarea id="manualCopyArea" readonly style="flex:1;min-height:300px;background:#0a0f1e;color:#e2e8f0;border:1px solid #334155;border-radius:8px;padding:12px;font-family:monospace;font-size:12px;resize:vertical;">${text.replace(/</g, '&lt;')}</textarea>
+        <button onclick="this.parentElement.parentElement.remove()" style="background:#f59e0b;color:#111;border:none;padding:10px 20px;border-radius:8px;font-weight:600;cursor:pointer;">Close</button>
+      </div>
+    `;
+    document.body.appendChild(modal);
+    setTimeout(() => {
+      const ta = document.getElementById('manualCopyArea');
+      if (ta) { ta.focus(); ta.select(); }
+    }, 100);
+  };
+
+  tryModern().then(success => {
+    if (success) {
+      log(`Copied ${results.length} rows to clipboard.`, 'ok');
+      alert(successMsg);
+      return;
+    }
+    if (tryLegacy()) {
+      log(`Copied ${results.length} rows to clipboard (fallback).`, 'ok');
+      alert(successMsg);
+      return;
+    }
+    log('Auto-copy blocked — showing manual copy box.', 'err');
+    showManual();
+  });
+}
+
+function downloadCSV() {
+  if (results.length === 0) { alert('No rows to export.'); return; }
+  const escape = v => {
+    const s = String(v || '');
+    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+      return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+  };
+  const headers = ['Denomination', 'Year', 'Mint', 'Rarity Index', 'Category', 'Metals', 'Type',
+    'Weight (grams)', 'Size (mm)', 'Thickness (mm)', 'Shape', 'Fine', 'Very Fine',
+    'Extremely Fine', 'UNC',
+    'Obverse Image URL', 'Reverse Image URL', 'Country',
+    'Obverse Description', 'Reverse Description', 'Commemorative Theme'];
+  const lines = [headers.join(',')];
+  results.forEach(r => lines.push(FIELDS.map(f => escape(r[f])).join(',')));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `coin_data_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================
+// INIT
+// ============================================
+updateKeyStatus();
+updateOpenaiStatus();
+updateGeminiStatus();
+updateToggleButtons();
+updateSheetUrlStatus();
+</script>
+</body>
+</html>
